@@ -1,0 +1,165 @@
+---
+title: "Connectivity_vs_Age_for_Lanxin_forgithub"
+author: "Tanya Bhatia"
+date: "2024-08-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# set root wd here
+```
+
+```{r load libraries, include=FALSE}
+#install.packages("R.matlab")
+library(R.matlab)
+library(ggplot2)
+library(gridExtra)
+library(patchwork)
+library(cowplot)
+
+#setwd('/Users/jil02/Dropbox (NYU Langone Health)/TANYA_LANXIN/birth_transition_project_0923/data_and_notes')
+setwd('/Users/tb2322/NYU Langone Health Dropbox/Tanya Bhatia/TANYA_LANXIN/birth_transtion_project_0824/data_and_notes')
+
+```
+
+Load Data 
+```{r setup}
+# load .mat vector file
+matfile = readMat("/Users/tb2322/NYU Langone Health Dropbox/Tanya Bhatia/TANYA_LANXIN/birth_transtion_project_0824/data_and_notes/network_FC_vec_new.mat")
+df = matfile$network.avg
+df_new= as.data.frame(df)
+df_t = t(df_new) # x axis is network pairs, y axis is subject 
+network_avg = df_t
+network_avg_df = as.data.frame(network_avg)
+
+# save transposed .mat vector file of 184 subjects x 36 network pairs, use as input for combat
+#write.csv(network_avg_df, "/Users/tb2322/NYU Langone Health Dropbox/Tanya Bhatia/TANYA_LANXIN/birth_transtion_project_0824/data_and_notes/network_avg_df.csv")
+
+network_avg_combat = read.csv('/Users/tb2322/NYU Langone Health Dropbox/Tanya Bhatia/TANYA_LANXIN/birth_transtion_project_0824/data_and_notes/network_df_combat_output_edited_as_matrix.csv')
+# change to final batch: 
+age_data = read.csv('/Users/tb2322/NYU Langone Health Dropbox/Tanya Bhatia/TANYA_LANXIN/birth_transtion_project_0824/data_and_notes/Data_for_R_n184_final.csv')
+```
+
+Combine network and age data into one dataframe
+```{r}
+conn_age_df = cbind.data.frame(age_data, network_avg)
+
+conn_age_df_combat = cbind.data.frame(age_data, network_avg_combat)
+names(conn_age_df_combat) <- gsub("^V([0-9]+)\\.combat$", "\\1", names(conn_age_df_combat))
+```
+
+```{r, warning=FALSE, message=FALSE}
+
+setwd('/Users/tb2322/NYU Langone Health Dropbox/Tanya Bhatia/TANYA_LANXIN/birth_transtion_project_0824/figures')
+
+conn_age_df = conn_age_df_combat
+
+conn_age_df = conn_age_df[!is.na(conn_age_df$Preterm),]
+
+# Create a list to store the ggplot objects
+plots <- list()
+
+for (i in 1:36) {
+    # Perform Pearson correlation test
+    correlation_result <- cor.test(conn_age_df[[as.character(i)]], conn_age_df$GA_scan, 
+                                   method = 'pearson', use = 'complete.obs')
+    r <- correlation_result$estimate
+    p <- correlation_result$p.value
+    
+    # Determine significance marker
+    title_text <- ''
+    if (p < 0.001) {
+        title_text <- '***'
+    } else if (p < 0.01) {
+        title_text <- '**'
+    } else if (p < 0.05) {
+        title_text <- '*'
+    }
+    
+    # Create ggplot object
+    p <- ggplot(conn_age_df, aes(x = GA_scan, y = !!sym(as.character(i)))) +
+      geom_point(aes(colour = factor(Fetal)), alpha = 0.8, size = 0.3) +
+      scale_color_discrete(name = "", type = c("gray31", "gray71")) +
+      geom_smooth(method = 'gam', size = 0.45, fill = 'palevioletred1', color = 'violetred3') +
+      theme_minimal() +
+      theme_classic() +
+      theme(panel.background = element_rect(fill = "white")) +
+      theme(legend.position = "none") +  
+      theme(plot.title = element_text(size = 7, face = "bold")) +
+      theme(axis.text = element_blank()) +
+      theme(axis.text = element_text(size = 6.4)) +
+      theme(axis.title.x = element_blank(), axis.title.y = element_blank()) +
+      scale_x_continuous(breaks = scales::pretty_breaks(n = 4)) +
+      scale_y_continuous(breaks = scales::pretty_breaks(n = 4))
+    
+    # Append ggplot object to the list
+    plots[[i]] <- p
+}
+
+# Create a matrix for layout
+m <- matrix(NA, 8, 8)
+m[lower.tri(m, diag = TRUE)] <- 1:36
+
+# Create the combined plot with subplots and adjust size
+#best_plot <- grid.arrange(grobs = plots, layout_matrix = m)
+best_plot <- grid.arrange(grobs = plots, layout_matrix = m,
+                          width = 10,
+                          height = 45)
+
+# Save the plot
+ggsave("output_plot_combat_correct4.png", best_plot, width = 8, height = 8, limitsize = FALSE)
+
+```
+
+```{r}
+# Create a list to store the ggplot objects
+plots <- list()
+filtered_data <- subset(conn_age_df, abs(mean_pry)<=0.5 & abs(mean_xyz)<=0.5 & abs(mean_max_pry)<=1 & abs(mean_max_xyz)<=1)
+
+for (i in 1:36) {
+    
+    col_name <- as.character(i)
+    y <- filtered_data[[col_name]]
+    x <- filtered_data$GA_scan
+    loess_fit <- loess(y ~ x)
+
+    x0 <- seq(25, 45, length.out = 100)
+    y_pred <- predict(loess_fit, data.frame(x = x0))
+    dy_dx <- diff(y_pred) / diff(x0)
+
+    # Convert the matrix to a data frame
+    df <- data.frame(values = dy_dx, position = 1:99)
+    df <- drop_na(df)
+    
+    # Create a ggplot for the current subplot
+    p <- ggplot(df , aes(x = position, y = 1)) +
+      geom_raster(aes(fill = values), interpolate=TRUE) +
+      scale_fill_gradient2(low="navy", mid="white", high="red", midpoint=0, limits=c(-0.004, 0.004)) +
+      theme_void() +
+      theme(legend.position = "none")
+    
+    plots[[i]] <- p
+}
+
+# Convert ggplot objects to grobs
+#grobs <- lapply(plots, function(p) ggplotGrob(p))
+```
+
+
+```{r}
+setwd('/Users/tb2322/NYU Langone Health Dropbox/Tanya Bhatia/TANYA_LANXIN/birth_transtion_project_0824/figures')
+
+# Create a matrix for layout
+m <- matrix(NA, 8, 8)
+m[lower.tri(m, diag = TRUE)] <- 1:36
+
+# Create the combined plot with subplots and adjust size
+best_plot <- grid.arrange(grobs = plots, layout_matrix = m, 
+                          width = 10,
+                          height = 10)
+
+# Save the plot
+ggsave("slope_figure_combat_correctmaybe.png", best_plot, width = 8, height = 8, limitsize=FALSE)
+```
+
