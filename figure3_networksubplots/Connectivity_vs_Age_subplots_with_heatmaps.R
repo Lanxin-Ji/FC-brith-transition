@@ -66,7 +66,6 @@ set_new_order <- sapply(new_order, to_set)
 
 # Step 3: Create a vector to map the new order to original column indices
 index_mapping <- match(set_new_order, set_pair_mapping)
-#index_mapping <- match(new_order, pair_mapping)
 
 # Create lists to store the ggplot objects
 line_plots <- list()
@@ -78,8 +77,10 @@ for (i in 1:36) {
   col_index <- index_mapping[i]
   
   # Line plots
+  # Iterate col_index for new order with index mapping (e.g. changed order of networks)
   correlation_result <- cor.test(conn_age_df[[as.character(col_index)]], conn_age_df$GA_scan, 
                                  method = 'pearson', use = 'complete.obs')
+  # Iterate i for original mapping 
   #correlation_result <- cor.test(conn_age_df[[as.character(i)]], conn_age_df$GA_scan, 
   #                               method = 'pearson', use = 'complete.obs')
   r <- correlation_result$estimate
